@@ -6,7 +6,7 @@ Podfile.lock
 xcuserdata/
 *.xcworkspace/
 GoogleService-Info.plist
-cloud-minesweeper/functions/node_modules
+functions/node_modules
 .firebaserc
 firebase-debug.log
 .firebase
