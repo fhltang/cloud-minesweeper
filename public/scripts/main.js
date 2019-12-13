@@ -45,7 +45,10 @@ function subscribeGame(gameId) {
             }
             rendering += '\n';
         }
-        boardElement.innerText = rendering;
+        var preElement = document.createElement('pre');
+        preElement.innerText = rendering;
+        boardElement.innerHTML = '';
+        boardElement.appendChild(preElement);
     });
 }
 
