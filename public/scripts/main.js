@@ -10,6 +10,36 @@ function signOut() {
 function newGame() {
     newGameFunc({}).then(function(result) {
         console.log('gameId: ', result.data.gameId);
+        subscribeGame(result.data.gameId);
+    });
+}
+
+function joinGame() {
+    var gameId = window.location.hash.substring(1);
+    joinGameFunc({'gameId': gameId}).then(function(result) {
+        console.log('joined gameId: ', result.data.gameId);
+        subscribeGame(result.data.gameId);
+    })
+}
+
+function subscribeGame(gameId) {
+    if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+    }
+    unsubscribe = firebase.firestore().collection(GAMES).doc(gameId)
+    .onSnapshot((doc) => {
+        var rendering = '';
+        var board = doc.data().board;
+        for (var r = 0; r < board.rows.length; r++) {
+            var row = board.rows[r];
+            for (var c = 0; c < row.cols.length; c++) {
+                var col = row.cols[c];
+                rendering += col;
+            }
+            rendering += '\n';
+        }
+        boardElement.innerText = rendering;
     });
 }
 
@@ -50,6 +80,11 @@ function authStateObserver(user) {
 
     // Hide sign-in button.
     signInButtonElement.setAttribute('hidden', 'true');
+
+    // Show join game button
+    if (window.location.hash) {
+        joinGameButtonElement.removeAttribute('hidden');
+    }
   } else { // User is signed out!
     // Hide user's profile and sign-out button.
     userNameElement.setAttribute('hidden', 'true');
@@ -58,6 +93,9 @@ function authStateObserver(user) {
 
     // Show sign-in button.
     signInButtonElement.removeAttribute('hidden');
+
+    // Hide join game button
+    joinGameButtonElement.setAttribute('hidden', 'true');
   }
 }
 
@@ -70,6 +108,8 @@ function addSizeToGoogleProfilePic(url) {
 }
 
 
+const GAMES = 'games';
+
 // Shortcuts to DOM Elements.
 var userPicElement = document.getElementById('user-pic');
 var userNameElement = document.getElementById('user-name');
@@ -77,10 +117,13 @@ var signInButtonElement = document.getElementById('sign-in');
 var signOutButtonElement = document.getElementById('sign-out');
 var signInSnackbarElement = document.getElementById('must-signin-snackbar');
 var newGameButtonElement = document.getElementById('new-game');
+var joinGameButtonElement = document.getElementById('join-game');
+var boardElement = document.getElementById('board');
 
 signOutButtonElement.addEventListener('click', signOut);
 signInButtonElement.addEventListener('click', signIn);
 newGameButtonElement.addEventListener('click', newGame);
+joinGameButtonElement.addEventListener('click', joinGame);
 
 // initialize Firebase
 initFirebaseAuth();
@@ -90,8 +133,12 @@ var settings = {timestampsInSnapshots: true};
 
 // Functions
 var newGameFunc = firebase.functions().httpsCallable('newGame');
+var joinGameFunc = firebase.functions().httpsCallable('joinGame');
 
 firestore.settings(settings);
 
 // For local testing.  (Does not because cannot connect to Cloud Firestore.)
 // firebase.functions().useFunctionsEmulator('http://localhost:5001');
+
+// Global variables (yuck)
+var unsubscribe = null;
