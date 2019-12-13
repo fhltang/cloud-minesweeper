@@ -8,7 +8,11 @@ function signOut() {
 }
 
 function newGame() {
-    newGameFunc({}).then(result => {
+    newGameFunc({
+      height: 10,
+      width: 10,
+      mines: 5
+    }).then(result => {
         console.log('gameId: ', result.data.gameId);
         inviteLinkElement.innerHTML = window.location.protocol + '//' + window.location.host + window.location.pathname +'#' + result.data.gameId;
         inviteElement.removeAttribute('hidden');
@@ -36,8 +40,8 @@ function subscribeGame(gameId) {
         for (var r = 0; r < board.rows.length; r++) {
             var row = board.rows[r];
             for (var c = 0; c < row.cols.length; c++) {
-                var col = row.cols[c];
-                rendering += col;
+                var col = '' + row.cols[c];
+                rendering += col.padStart(4, ' ');
             }
             rendering += '\n';
         }
