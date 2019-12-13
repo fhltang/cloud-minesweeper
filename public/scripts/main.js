@@ -8,15 +8,17 @@ function signOut() {
 }
 
 function newGame() {
-    newGameFunc({}).then(function(result) {
+    newGameFunc({}).then(result => {
         console.log('gameId: ', result.data.gameId);
+        inviteLinkElement.innerHTML = window.location.protocol + '//' + window.location.host + window.location.pathname +'#' + result.data.gameId;
+        inviteElement.removeAttribute('hidden');
         subscribeGame(result.data.gameId);
     });
 }
 
 function joinGame() {
     var gameId = window.location.hash.substring(1);
-    joinGameFunc({'gameId': gameId}).then(function(result) {
+    joinGameFunc({'gameId': gameId}).then(result => {
         console.log('joined gameId: ', result.data.gameId);
         subscribeGame(result.data.gameId);
     })
@@ -83,7 +85,7 @@ function authStateObserver(user) {
 
     // Show join game button
     if (window.location.hash) {
-        joinGameButtonElement.removeAttribute('hidden');
+      joinGameButtonElement.removeAttribute('hidden');
     }
   } else { // User is signed out!
     // Hide user's profile and sign-out button.
@@ -117,6 +119,8 @@ var signInButtonElement = document.getElementById('sign-in');
 var signOutButtonElement = document.getElementById('sign-out');
 var signInSnackbarElement = document.getElementById('must-signin-snackbar');
 var newGameButtonElement = document.getElementById('new-game');
+var inviteElement = document.getElementById('invite');
+var inviteLinkElement = document.getElementById('invite-link');
 var joinGameButtonElement = document.getElementById('join-game');
 var boardElement = document.getElementById('board');
 
