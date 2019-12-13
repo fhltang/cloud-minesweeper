@@ -8,7 +8,7 @@ service cloud.firestore {
     }
     // Allow public game state to be read if user is playing.
     match /games/{document} {
-      allow read: if request.auth.uid != null;
+      allow read: if exists(/databases/$(database)/documents/games/$(document)/players/$(request.auth.uid));
       allow write: if false;
     }
     // Lock down by default.

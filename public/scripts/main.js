@@ -14,6 +14,7 @@ function newGame() {
       mines: 5
     }).then(result => {
         console.log('gameId: ', result.data.gameId);
+        window.location.hash = '#' + result.data.gameId;
         inviteLinkElement.innerHTML = window.location.protocol + '//' + window.location.host + window.location.pathname +'#' + result.data.gameId;
         inviteElement.removeAttribute('hidden');
         subscribeGame(result.data.gameId);
@@ -35,20 +36,50 @@ function subscribeGame(gameId) {
     }
     unsubscribe = firebase.firestore().collection(GAMES).doc(gameId)
     .onSnapshot((doc) => {
-        var rendering = '';
-        var board = doc.data().board;
-        for (var r = 0; r < board.rows.length; r++) {
-            var row = board.rows[r];
-            for (var c = 0; c < row.cols.length; c++) {
-                var col = '' + row.cols[c];
-                rendering += col.padStart(4, ' ');
-            }
-            rendering += '\n';
+      let board = doc.data().board;
+      let spans = [];
+      let buttons = [];
+
+      let table = document.createElement('table');
+      for (let r = 0; r < board.height; r++) {
+        let tr = document.createElement('tr');
+        table.appendChild(tr);
+        let srow = [];
+        let brow = [];
+        for (let c = 0; c < board.width; c++) {
+          let td = document.createElement('td');
+          tr.appendChild(td);
+          let button = document.createElement('button');
+          brow.push(button);
+          td.appendChild(button);
+          let span = document.createElement('span');
+          span.setAttribute('hidden', 'true');
+          srow.push(span);
+          td.appendChild(span);
         }
-        var preElement = document.createElement('pre');
-        preElement.innerText = rendering;
-        boardElement.innerHTML = '';
-        boardElement.appendChild(preElement);
+        spans.push(srow);
+        buttons.push(brow);
+      }
+      boardElement.innerHTML = '';
+      boardElement.appendChild(table);
+
+      for (let r = 0; r < board.rows.length; r++) {
+        for (let c = 0; c < board.rows[r].cols.length; c++) {
+          let span = spans[r][c];
+          let button = buttons[r][c];
+          if (board.rows[r].cols[c] === -3) {
+            button.removeAttribute('hidden');
+          } else if (board.rows[r].cols[c] === -1) {
+            button.setAttribute('hidden', 'true');
+            span.removeAttribute('hidden');
+            span.innerHTML = 'X';
+          } else if (board.rows[r].cols[c] >= 0) {
+            button.setAttribute('hidden', 'true');
+            span.removeAttribute('hidden');
+            span.innerHTML = board.rows[r].cols[c];
+          }
+        }
+      }
     });
 }
 
@@ -92,6 +123,8 @@ function authStateObserver(user) {
 
     // Show join game button
     if (window.location.hash) {
+      let gameId = window.location.hash.substring(1);
+      subscribeGame(gameId);
       joinGameButtonElement.removeAttribute('hidden');
     }
   } else { // User is signed out!
@@ -145,6 +178,7 @@ var settings = {timestampsInSnapshots: true};
 // Functions
 var newGameFunc = firebase.functions().httpsCallable('newGame');
 var joinGameFunc = firebase.functions().httpsCallable('joinGame');
+var playMoveFunc = firebase.functions().httpsCallable('playMove');
 
 firestore.settings(settings);
 
