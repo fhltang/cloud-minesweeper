@@ -90,26 +90,24 @@ exports.newGame = functions.https.onCall((data, context) => {
     }
 
     let db = admin.firestore();
-    var gameId = null;
-    var gameRef = null;
-    return db.collection(GAMES).add({
+    let gameRef = db.collection(GAMES).doc();
+    var gameId = gameRef.id;
+
+    let batch = db.batch();
+    batch.create(gameRef, {
         created: new Date().getTime(),
         creator: uid,
-        moves: 0,
+        moves: [],
         board: publicBoard
-    }).then(gameDoc => {
-        gameId = gameDoc.id;
-        gameRef = gameDoc;
+    });
+    batch.create(db.collection(GAMES_HIDDEN).doc(gameId), board);
+    batch.create(gameRef.collection(PLAYERS).doc(uid), {
+        name: name,
+        picture: picture,
+        email: email
+    });
 
-        return db.collection(GAMES_HIDDEN).doc(gameId).set(board);
-    }).then(() => {
-        // Add uid as a player
-        return gameRef.collection(PLAYERS).doc(uid).set({
-            name: name,
-            picture: picture,
-            email: email
-        });
-    }).then(() => {
+    return batch.commit().then(() => {
         return {
             gameId: gameId
         };
@@ -125,29 +123,35 @@ exports.joinGame = functions.https.onCall((data, context) => {
     const name = context.auth.token.name || null;
     const picture = context.auth.token.picture || null;
     const email = context.auth.token.email || null;
-    const gameId = data.gameId;
+    const gameId = data.gameId || null;
+
+    if (gameId === null) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing gameId');
+    }
 
     var db = admin.firestore();
     let game = null;
-    return db.collection(GAMES).doc(gameId).get().then((gameDoc) => {
-        if (!gameDoc.exists) {
-            throw new functions.https.HttpsError('not-found', 'Unknown gameId ' + gameId);
-        }
-        game = gameDoc;
-        return db.collection(GAMES_HIDDEN).doc(gameId).get();
-    }).then((hiddenGameDoc) => {
-        if (!hiddenGameDoc.exists) {
-            throw new functions.https.HttpsError('internal', 'Game state inconsistent (missing hidden board) for gameId ' + gameId);
-        }
-        return game.ref.collection(PLAYERS).doc(uid).set({
-            name: name,
-            picture:picture,
-            email:email
+    return db.runTransaction(t => {
+        return t.get(db.collection(GAMES).doc(gameId)).then((gameDoc) => {
+            if (!gameDoc.exists) {
+                throw new functions.https.HttpsError('not-found', 'Unknown gameId ' + gameId);
+            }
+            game = gameDoc;
+            return t.get(db.collection(GAMES_HIDDEN).doc(gameId));
+        }).then((hiddenGameDoc) => {
+            if (!hiddenGameDoc.exists) {
+                throw new functions.https.HttpsError('internal', 'Game state inconsistent (missing hidden board) for gameId ' + gameId);
+            }
+            return t.set(game.ref.collection(PLAYERS).doc(uid), {
+                name: name,
+                picture:picture,
+                email:email
+            });
         });
     }).then(() => {
         return {'gameId': gameId};
     }).catch((error) => {
-        return new functions.https.HttpsError('failed-precondition', 'Failed to join game: ' + error);
+        throw new functions.https.HttpsError('failed-precondition', 'Failed to join game: ' + error);
     });
 });
 
@@ -162,71 +166,90 @@ exports.playMove = functions.https.onCall((data, context) => {
     var hiddenGame = null;
     var hiddenBoard = null;
     let moves = [];
+    let gameId = data.gameId || null;
 
-    // Check if gameId is valid
-    return db.collection(GAMES).doc(data.gameId).get().then((gameDoc) => {
-        game = gameDoc;
-        if (!game.exists) {
-            throw new functions.https.HttpsError('not-found', 'Cannot find game ' + data.gameId);
-        }
+    if (gameId === null) {
+        throw new functions.https.HttpsError('invalid-argument', 'Missing gameId');
+    }
 
-        return db.collection(GAMES_HIDDEN).doc(data.gameId).get();
-    }).then((hiddenGameDoc) => {
-        hiddenGame = hiddenGameDoc;
-        if (!game.exists) {
-            throw new functions.https.HttpsError('internal', 'Game state inconsistent (missing hidden board) for gameId ' + gameId);
-        }
-
-        hiddenBoard = hiddenGame.data();
-        return game.ref.collection(PLAYERS).doc(uid).get();
-    }).then((player) => {
-        if (!player.exists) {
-            throw new functions.https.HttpsError('permission-denied', 'Player ' + uid + ' has not joined game ' + data.gameId);
-        }
-
-        var board = game.data().board;
-
-        if (data.reveal.row < 0 || data.reveal.row >= board.height) {
-            throw new functions.https.HttpsError('invalid-argument', 'Row ' + data.reveal.row + ' out of range');
-        }
-        if (data.reveal.col < 0 || data.reveal.col >= board.width) {
-            throw new functions.https.HttpsError('invalid-argument', 'Col ' + data.reveal.col + ' out of range');
-        }
-
-        let rows = board.rows;
-        // queue for BFS
-        let queue = [data.reveal];
-        while (queue.length > 0) {
-            let move = queue.shift();
-            if (rows[move.row].cols[move.col] !== HIDDEN) {
-                // Ignore trying to reveal a non-hidden tile.
-                // This may happen because our BFS of tiles may hit the same tile more than once.
-                continue;
+    let transaction = db.runTransaction(t => {
+        // Check if gameId is valid
+        return t.get(db.collection(GAMES).doc(gameId)).then((gameDoc) => {
+            game = gameDoc;
+            if (!game.exists) {
+                throw new functions.https.HttpsError('not-found', 'Cannot find game ' + gameId);
             }
 
-            moves.push(move);
-            rows[move.row].cols[move.col] = hiddenBoard.rows[move.row].cols[move.col];
-
-            if (hiddenBoard.rows[move.row].cols[move.col] !== 0) {
-                continue;
+            return t.get(db.collection(GAMES_HIDDEN).doc(gameId));
+        }).then((hiddenGameDoc) => {
+            hiddenGame = hiddenGameDoc;
+            if (!game.exists) {
+                throw new functions.https.HttpsError('internal', 'Game state inconsistent (missing hidden board) for gameId ' + gameId);
             }
 
-            let deltas = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
-            for (let i = 0; i < deltas.length; i++) {
-                let delta = deltas[i];
-                let cr = move.row + delta[0];
-                let cc = move.col + delta[1];
-                if (0 <= cr && cr < board.height && 0 <= cc && cc < board.width) {
-                    if (rows[cr].cols[cc] === HIDDEN) {
-                        queue.push({row: cr, col: cc});
+            hiddenBoard = hiddenGame.data();
+            return t.get(game.ref.collection(PLAYERS).doc(uid));
+        }).then((player) => {
+            if (!player.exists) {
+                throw new functions.https.HttpsError('permission-denied', 'Player ' + uid + ' has not joined game ' + gameId);
+            }
+
+            var board = game.data().board;
+
+            if (data.reveal.row < 0 || data.reveal.row >= board.height) {
+                throw new functions.https.HttpsError('invalid-argument', 'Row ' + data.reveal.row + ' out of range');
+            }
+            if (data.reveal.col < 0 || data.reveal.col >= board.width) {
+                throw new functions.https.HttpsError('invalid-argument', 'Col ' + data.reveal.col + ' out of range');
+            }
+
+            let rows = board.rows;
+            if (rows[data.reveal.row].cols[data.reveal.col] !== HIDDEN) {
+                throw new functions.https.HttpsError('invalid-argument', 'Tile (' + data.reveal.row + ', ' + data.reveal.col + ') is not hidden');
+            }
+
+            // queue for BFS
+            let queue = [data.reveal];
+            while (queue.length > 0) {
+                let move = queue.shift();
+                if (rows[move.row].cols[move.col] !== HIDDEN) {
+                    // Ignore trying to reveal a non-hidden tile.
+                    // This may happen because our BFS of tiles may hit the same tile more than once.
+                    continue;
+                }
+
+                moves.push(move);
+                rows[move.row].cols[move.col] = hiddenBoard.rows[move.row].cols[move.col];
+
+                if (hiddenBoard.rows[move.row].cols[move.col] !== 0) {
+                    continue;
+                }
+
+                let deltas = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
+                for (let i = 0; i < deltas.length; i++) {
+                    let delta = deltas[i];
+                    let cr = move.row + delta[0];
+                    let cc = move.col + delta[1];
+                    if (0 <= cr && cr < board.height && 0 <= cc && cc < board.width) {
+                        if (rows[cr].cols[cc] === HIDDEN) {
+                            queue.push({row: cr, col: cc});
+                        }
                     }
                 }
             }
-        }
-        return game.ref.update('board.rows', rows);
-    }).then(() => {
-        return game.ref.update('moves', game.data().moves + 1);
-    }).then(() => {
+            return t.update(game.ref, 'board.rows', rows);
+        }).then(() => {
+            let userMoves = game.data().moves || [];
+            userMoves.push({row: data.reveal.row, col: data.reveal.col});
+            return t.update(game.ref, 'moves', userMoves);
+        });
+    }).then(result => {
+        console.log('Transaction successful');
         return {moves: moves};
+    }).catch(err => {
+        console.log('Transaction failure boo hoo:', err);
+        throw new functions.https.HttpsError('internal', 'Transaction failure: ' + err);
     });
+
+    return transaction;
 });
