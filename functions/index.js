@@ -92,16 +92,15 @@ exports.newGame = functions.https.onCall((data, context) => {
     let db = admin.firestore();
     var gameId = null;
     var gameRef = null;
-    console.log('Public board:', publicBoard);
     return db.collection(GAMES).add({
         created: new Date().getTime(),
         creator: uid,
+        moves: 0,
         board: publicBoard
     }).then(gameDoc => {
         gameId = gameDoc.id;
         gameRef = gameDoc;
 
-        console.log('Private board:', board);
         return db.collection(GAMES_HIDDEN).doc(gameId).set(board);
     }).then(() => {
         // Add uid as a player
@@ -194,19 +193,19 @@ exports.playMove = functions.https.onCall((data, context) => {
             throw new functions.https.HttpsError('invalid-argument', 'Col ' + data.reveal.col + ' out of range');
         }
 
-        let newData = game.data();
+        let rows = board.rows;
         // queue for BFS
         let queue = [data.reveal];
         while (queue.length > 0) {
             let move = queue.shift();
-            if (newData.board.rows[move.row].cols[move.col] !== HIDDEN) {
+            if (rows[move.row].cols[move.col] !== HIDDEN) {
                 // Ignore trying to reveal a non-hidden tile.
                 // This may happen because our BFS of tiles may hit the same tile more than once.
                 continue;
             }
 
             moves.push(move);
-            newData.board.rows[move.row].cols[move.col] = hiddenBoard.rows[move.row].cols[move.col];
+            rows[move.row].cols[move.col] = hiddenBoard.rows[move.row].cols[move.col];
 
             if (hiddenBoard.rows[move.row].cols[move.col] !== 0) {
                 continue;
@@ -217,14 +216,16 @@ exports.playMove = functions.https.onCall((data, context) => {
                 let delta = deltas[i];
                 let cr = move.row + delta[0];
                 let cc = move.col + delta[1];
-                if (0 <= cr && cr < newData.board.height && 0 <= cc && cc < newData.board.width) {
-                    if (newData.board.rows[cr].cols[cc] === HIDDEN) {
+                if (0 <= cr && cr < board.height && 0 <= cc && cc < board.width) {
+                    if (rows[cr].cols[cc] === HIDDEN) {
                         queue.push({row: cr, col: cc});
                     }
                 }
             }
         }
-        return game.ref.set(newData)
+        return game.ref.update('board.rows', rows);
+    }).then(() => {
+        return game.ref.update('moves', game.data().moves + 1);
     }).then(() => {
         return {moves: moves};
     });

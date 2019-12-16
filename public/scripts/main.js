@@ -1,3 +1,11 @@
+function showWaiting() {
+  bodyElement.classList.add('waiting');
+}
+
+function stopShowWaiting() {
+  bodyElement.classList.remove('waiting');
+}
+
 function signIn() {
   var provider = new firebase.auth.GoogleAuthProvider();
   firebase.auth().signInWithPopup(provider);
@@ -8,6 +16,7 @@ function signOut() {
 }
 
 function newGame() {
+    showWaiting();
     newGameFunc({
       height: 10,
       width: 10,
@@ -18,14 +27,17 @@ function newGame() {
         inviteLinkElement.innerHTML = window.location.protocol + '//' + window.location.host + window.location.pathname +'#' + result.data.gameId;
         inviteElement.removeAttribute('hidden');
         subscribeGame(result.data.gameId);
+        stopShowWaiting();
     });
 }
 
 function joinGame() {
     var gameId = window.location.hash.substring(1);
+    showWaiting();
     joinGameFunc({'gameId': gameId}).then(result => {
         console.log('joined gameId: ', result.data.gameId);
         subscribeGame(result.data.gameId);
+        stopShowWaiting();
     })
 }
 
@@ -58,8 +70,10 @@ function subscribeGame(gameId) {
           td.appendChild(span);
 
           button.addEventListener('click', () => {
-            playMoveFunc({gameId: gameId, reveal: {row: r, col: c}});
-            console.log(r, c);
+            showWaiting();
+            playMoveFunc({gameId: gameId, reveal: {row: r, col: c}}).then(() => {
+              stopShowWaiting();
+            });
           });
         }
         spans.push(srow);
@@ -158,6 +172,7 @@ function addSizeToGoogleProfilePic(url) {
 const GAMES = 'games';
 
 // Shortcuts to DOM Elements.
+var bodyElement = document.getElementsByTagName('body').item(0);
 var userPicElement = document.getElementById('user-pic');
 var userNameElement = document.getElementById('user-name');
 var signInButtonElement = document.getElementById('sign-in');
