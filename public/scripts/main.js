@@ -56,6 +56,11 @@ function subscribeGame(gameId) {
           span.setAttribute('hidden', 'true');
           srow.push(span);
           td.appendChild(span);
+
+          button.addEventListener('click', () => {
+            playMoveFunc({gameId: gameId, reveal: {row: r, col: c}});
+            console.log(r, c);
+          });
         }
         spans.push(srow);
         buttons.push(brow);
