@@ -165,8 +165,7 @@ function newGame() {
         window.location.hash = '#' + result.data.gameId;
         inviteLinkElement.innerHTML = window.location.protocol + '//' + window.location.host + window.location.pathname +'#' + result.data.gameId;
         inviteElement.removeAttribute('hidden');
-        subscribeGame(result.data.gameId);
-        stopShowWaiting();
+        subscribeGame(result.data.gameId, stopShowWaiting);
     });
 }
 
@@ -175,12 +174,12 @@ function joinGame() {
     showWaiting();
     joinGameFunc({'gameId': gameId}).then(result => {
         console.log('joined gameId: ', result.data.gameId);
-        subscribeGame(result.data.gameId);
-        stopShowWaiting();
+        subscribeGame(result.data.gameId, stopShowWaiting);
     })
 }
 
-function subscribeGame(gameId) {
+// onerror can handle initial errors, not transient errors
+function subscribeGame(gameId, callback, onerror) {
     if (unsubscribe) {
         unsubscribe();
         unsubscribe = null;
@@ -191,10 +190,15 @@ function subscribeGame(gameId) {
       if (gameState === null) {
         boardElement.innerHTML = '';
         gameState = new Game(gameId, doc.data(), boardElement);
+        callback();
         return;
       }
 
       gameState.update(doc.data());
+    }, (error) => {
+      if (gameState === null && onerror) {
+        onerror(error);
+      }
     });
 }
 
@@ -236,13 +240,25 @@ function authStateObserver(user) {
     // Hide sign-in button.
     signInButtonElement.setAttribute('hidden', 'true');
 
+    // Show new game button
+    newGameButtonElement.removeAttribute('hidden');
+
     // Show join game button
     if (window.location.hash) {
       let gameId = window.location.hash.substring(1);
-      subscribeGame(gameId);
-      joinGameButtonElement.removeAttribute('hidden');
+      subscribeGame(gameId, () => {
+        joinGameButtonElement.setAttribute('hidden', 'true');
+      }, error => {
+        // assume it's a permission error
+        joinGameButtonElement.removeAttribute('hidden');
+      });      
     }
   } else { // User is signed out!
+    if (unsubscribe) {
+      boardElement.innerHTML = '';
+      unsubscribe();
+    }
+
     // Hide user's profile and sign-out button.
     userNameElement.setAttribute('hidden', 'true');
     userPicElement.setAttribute('hidden', 'true');
@@ -250,6 +266,9 @@ function authStateObserver(user) {
 
     // Show sign-in button.
     signInButtonElement.removeAttribute('hidden');
+
+    // Hide new game button.
+    newGameButtonElement.setAttribute('hidden', 'true');
 
     // Hide join game button
     joinGameButtonElement.setAttribute('hidden', 'true');
