@@ -1,3 +1,142 @@
+const HIDDEN = -3;
+const FLAGGED = -2;
+const MINE = -1;
+
+// Constructor
+// gameId - string
+// game = {board: {height:..., width:..., rows: [{cols:...}]}, moves: [{row:..., col:...}, ...]}
+// destElement - node in which to create table element
+function Game(gameId, game, destElement) {
+  // Take board state and update rendering without animation.
+  this.fullUpdate = function(game) {
+    let self = this;
+    self.board = game.board;
+    self.moveCount = (game.moves || []).length;
+    for (let r = 0; r < self.board.rows.length; r++) {
+      for (let c = 0; c < self.board.rows[r].cols.length; c++) {
+        let span = self.spans[r][c];
+        let button = self.buttons[r][c];
+        if (self.board.rows[r].cols[c] === HIDDEN) {
+          button.removeAttribute('hidden');
+        } else if (self.board.rows[r].cols[c] === MINE) {
+          button.setAttribute('hidden', 'true');
+          span.removeAttribute('hidden');
+          span.innerHTML = 'X';
+        } else if (self.board.rows[r].cols[c] >= 0) {
+          button.setAttribute('hidden', 'true');
+          span.removeAttribute('hidden');
+          if (self.board.rows[r].cols[c] > 0) {
+            span.innerHTML = self.board.rows[r].cols[c];
+          }
+        }
+      }
+    }
+  }
+
+  // Try to render updated board state
+  this.update = function(game) {
+    let self = this;
+    let newMoveCount = (game.moves || []).length;
+
+    if (newMoveCount <= self.moveCount) {
+      // Weird. Nothing has happened.
+      return;
+    }
+
+    if (newMoveCount > self.moveCount + 1) {
+      // There has been more than one move since the last rendering.  Give up and don't animate.
+      return self.fullUpdate(game);
+    }
+
+    let queue = [game.moves[game.moves.length - 1]];
+    (function animate() {
+      if (queue.length === 0) {
+        return;
+      }
+      console.log('animate', queue);
+      let move = queue.shift();
+      let r = move.row;
+      let c = move.col;
+      if (self.board.rows[r].cols[c] === game.board.rows[r].cols[c]) {
+         return animate();
+      }
+         
+      // Update state
+      self.board.rows[r].cols[c] = game.board.rows[r].cols[c];
+      // Update DOM elements.
+      self.spans[r][c].removeAttribute('hidden');
+      self.buttons[r][c].setAttribute('hidden', 'true');
+      if (self.board.rows[r].cols[c] === MINE) {
+        self.spans[r][c].innerHTML = 'X';
+      } else if (self.board.rows[r].cols[c] > 0) {
+        self.spans[r][c].innerHTML = self.board.rows[r].cols[c];
+      }
+
+      // do BFS of neighbours
+      let deltas = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
+      for (let i = 0; i < deltas.length; i++) {
+          let delta = deltas[i];
+          let cr = move.row + delta[0];
+          let cc = move.col + delta[1];
+          if (0 <= cr && cr < self.board.height && 0 <= cc && cc < self.board.width) {
+              if (self.board.rows[cr].cols[cc] === HIDDEN && game.board.rows[cr].cols[cr] !== HIDDEN) {
+                queue.push({row: cr, col: cc});
+              }
+          }
+      }
+      setTimeout(animate, 50);
+    })();
+
+    self.moveCount = (game.moves || []).length;
+
+  }
+
+
+  this.gameId = gameId;
+  this.board = game.board;
+  this.moveCount = (game.moves || []).length;
+
+  // Array of arrays of span elements representing the revealed tile.
+  this.spans = [];
+  // Array of arrays of buttons which are clicked to reveal a tile.
+  this.buttons = [];
+
+  // Table element.
+  this.table = document.createElement('table'); 
+
+  for (let r = 0; r < game.board.height; r++) {
+    let tr = document.createElement('tr');
+    this.table.appendChild(tr);
+    let srow = [];
+    let brow = [];
+    for (let c = 0; c < game.board.width; c++) {
+      let td = document.createElement('td');
+      tr.appendChild(td);
+      let button = document.createElement('button');
+      brow.push(button);
+      td.appendChild(button);
+      let span = document.createElement('span');
+      span.setAttribute('hidden', 'true');
+      srow.push(span);
+      td.appendChild(span);
+
+      button.addEventListener('click', () => {
+        showWaiting();
+        playMoveFunc({gameId: this.gameId, reveal: {row: r, col: c}}).then(() => {
+          stopShowWaiting();
+        });
+      });
+    }
+    this.spans.push(srow);
+    this.buttons.push(brow);
+  }
+  destElement.appendChild(this.table);
+
+  this.fullUpdate(game);
+}
+
+
+
 function showWaiting() {
   bodyElement.classList.add('waiting');
 }
@@ -46,59 +185,16 @@ function subscribeGame(gameId) {
         unsubscribe();
         unsubscribe = null;
     }
+    gameState = null;
     unsubscribe = firebase.firestore().collection(GAMES).doc(gameId)
     .onSnapshot((doc) => {
-      let board = doc.data().board;
-      let spans = [];
-      let buttons = [];
-
-      let table = document.createElement('table');
-      for (let r = 0; r < board.height; r++) {
-        let tr = document.createElement('tr');
-        table.appendChild(tr);
-        let srow = [];
-        let brow = [];
-        for (let c = 0; c < board.width; c++) {
-          let td = document.createElement('td');
-          tr.appendChild(td);
-          let button = document.createElement('button');
-          brow.push(button);
-          td.appendChild(button);
-          let span = document.createElement('span');
-          span.setAttribute('hidden', 'true');
-          srow.push(span);
-          td.appendChild(span);
-
-          button.addEventListener('click', () => {
-            showWaiting();
-            playMoveFunc({gameId: gameId, reveal: {row: r, col: c}}).then(() => {
-              stopShowWaiting();
-            });
-          });
-        }
-        spans.push(srow);
-        buttons.push(brow);
+      if (gameState === null) {
+        boardElement.innerHTML = '';
+        gameState = new Game(gameId, doc.data(), boardElement);
+        return;
       }
-      boardElement.innerHTML = '';
-      boardElement.appendChild(table);
 
-      for (let r = 0; r < board.rows.length; r++) {
-        for (let c = 0; c < board.rows[r].cols.length; c++) {
-          let span = spans[r][c];
-          let button = buttons[r][c];
-          if (board.rows[r].cols[c] === -3) {
-            button.removeAttribute('hidden');
-          } else if (board.rows[r].cols[c] === -1) {
-            button.setAttribute('hidden', 'true');
-            span.removeAttribute('hidden');
-            span.innerHTML = 'X';
-          } else if (board.rows[r].cols[c] >= 0) {
-            button.setAttribute('hidden', 'true');
-            span.removeAttribute('hidden');
-            span.innerHTML = board.rows[r].cols[c];
-          }
-        }
-      }
+      gameState.update(doc.data());
     });
 }
 
@@ -206,4 +302,7 @@ firestore.settings(settings);
 // firebase.functions().useFunctionsEmulator('http://localhost:5001');
 
 // Global variables (yuck)
+// Callback to unsubscribe from a game.
 var unsubscribe = null;
+// Game object.
+var gameState = null;

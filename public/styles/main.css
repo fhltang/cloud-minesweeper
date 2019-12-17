@@ -90,10 +90,25 @@ html, body {
   border-right-color: rgb(255, 255, 255);
   border-bottom-color: rgb(255, 255, 255);
   border-left-color: rgb(128, 128, 128);
+  table-layout: fixed;
+}
+
+#board tr {
+  text-align: center;
+  height: 20px;
+  padding: 0;
+  margin: 0;
 }
 
 #board td {
   padding: 0;
+  margin: 0;
+  width: 20px;
+}
+
+#board span {
+  padding: 0;
+  margin: 0;
 }
 
 #board button {
@@ -112,4 +127,10 @@ html, body {
 
 body.waiting * {
   cursor: progress;
+}
+
+#invite-link {
+  border-width: thin;
+  border-style: solid;
+  padding: 0.2em;
 }
