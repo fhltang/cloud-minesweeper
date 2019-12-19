@@ -104,7 +104,8 @@ exports.newGame = functions.https.onCall((data, context) => {
     batch.create(gameRef.collection(PLAYERS).doc(uid), {
         name: name,
         picture: picture,
-        email: email
+        email: email,
+        score: 0
     });
 
     return batch.commit().then(() => {
@@ -144,8 +145,9 @@ exports.joinGame = functions.https.onCall((data, context) => {
             }
             return t.set(game.ref.collection(PLAYERS).doc(uid), {
                 name: name,
-                picture:picture,
-                email:email
+                picture: picture,
+                email: email,
+                score: 0
             });
         });
     }).then(() => {
@@ -162,9 +164,6 @@ exports.playMove = functions.https.onCall((data, context) => {
 
     var db = admin.firestore();
 
-    var game = null;
-    var hiddenGame = null;
-    var hiddenBoard = null;
     let moves = [];
     let gameId = data.gameId || null;
 
@@ -173,6 +172,11 @@ exports.playMove = functions.https.onCall((data, context) => {
     }
 
     let transaction = db.runTransaction(t => {
+        let score = 0;
+        let game = null;
+        let hiddenGame = null;
+        let hiddenBoard = null;
+    
         // Check if gameId is valid
         return t.get(db.collection(GAMES).doc(gameId)).then((gameDoc) => {
             game = gameDoc;
@@ -194,7 +198,9 @@ exports.playMove = functions.https.onCall((data, context) => {
                 throw new functions.https.HttpsError('permission-denied', 'Player ' + uid + ' has not joined game ' + gameId);
             }
 
-            var board = game.data().board;
+            score = player.data().score;
+
+            let board = game.data().board;
 
             if (data.reveal.row < 0 || data.reveal.row >= board.height) {
                 throw new functions.https.HttpsError('invalid-argument', 'Row ' + data.reveal.row + ' out of range');
@@ -221,6 +227,8 @@ exports.playMove = functions.https.onCall((data, context) => {
                 moves.push(move);
                 rows[move.row].cols[move.col] = hiddenBoard.rows[move.row].cols[move.col];
 
+                score += (hiddenBoard.rows[move.row].cols[move.col] === MINE) ? -10 : 1;
+
                 if (hiddenBoard.rows[move.row].cols[move.col] !== 0) {
                     continue;
                 }
@@ -242,6 +250,8 @@ exports.playMove = functions.https.onCall((data, context) => {
             let userMoves = game.data().moves || [];
             userMoves.push({row: data.reveal.row, col: data.reveal.col});
             return t.update(game.ref, 'moves', userMoves);
+        }).then(() => {
+            return t.update(game.ref.collection(PLAYERS).doc(uid), 'score', score);
         });
     }).then(result => {
         console.log('Transaction successful');
