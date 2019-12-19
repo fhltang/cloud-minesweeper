@@ -22,6 +22,9 @@ function Game(gameId, game, destElement) {
           button.setAttribute('hidden', 'true');
           span.removeAttribute('hidden');
           span.innerHTML = 'X';
+        } else if (self.board.rows[r].cols[c] === FLAGGED) {
+          button.removeAttribute('hidden');
+          button.innerHTML = 'P';
         } else if (self.board.rows[r].cols[c] >= 0) {
           button.setAttribute('hidden', 'true');
           span.removeAttribute('hidden');
@@ -54,7 +57,10 @@ function Game(gameId, game, destElement) {
       if (r < 0 || r >= self.board.height || c < 0 || c >= self.board.width) {
         return;
       }
-      if (self.board.rows[r].cols[c] === HIDDEN && game.board.rows[r].cols[c] !== HIDDEN) {
+      if (
+        (self.board.rows[r].cols[c] === HIDDEN && game.board.rows[r].cols[c] !== HIDDEN) ||
+        (self.buttons[r][c].innerHTML !== '' && game.board.rows[r].cols[c] !== FLAGGED) ||
+        (self.buttons[r][c].innerHTML === '' && game.board.rows[r].cols[c] === FLAGGED)) {
         moves.push({row: r, col: c});
       }
     }
@@ -102,12 +108,24 @@ function Game(gameId, game, destElement) {
       // Update state
       self.board.rows[r].cols[c] = game.board.rows[r].cols[c];
       // Update DOM elements.
-      self.spans[r][c].removeAttribute('hidden');
-      self.buttons[r][c].setAttribute('hidden', 'true');
-      if (self.board.rows[r].cols[c] === MINE) {
-        self.spans[r][c].innerHTML = 'X';
-      } else if (self.board.rows[r].cols[c] > 0) {
-        self.spans[r][c].innerHTML = self.board.rows[r].cols[c];
+      switch (self.board.rows[r].cols[c]) {
+        case MINE:
+          self.spans[r][c].removeAttribute('hidden');
+          self.buttons[r][c].setAttribute('hidden', 'true');
+          self.spans[r][c].innerHTML = 'X';
+          break;
+        case HIDDEN:
+          self.buttons[r][c].innerHTML = '';
+          break;
+        case FLAGGED:
+          self.buttons[r][c].innerHTML = 'P';
+          break;
+        default:
+          self.spans[r][c].removeAttribute('hidden');
+          self.buttons[r][c].setAttribute('hidden', 'true');
+          if (self.board.rows[r].cols[c] > 0) {
+            self.spans[r][c].innerHTML = self.board.rows[r].cols[c];
+          }
       }
       setTimeout(animate, 50);
     })();
@@ -146,10 +164,40 @@ function Game(gameId, game, destElement) {
       td.appendChild(span);
 
       button.addEventListener('click', () => {
-        showWaiting();
-        playMoveFunc({gameId: this.gameId, reveal: {row: r, col: c}}).then(() => {
-          stopShowWaiting();
-        });
+        let self = this;
+
+        if (flagElement.checked) {
+          if (self.buttons[r][c].innerHTML !== 'P') {
+            self.buttons[r][c].innerHTML = 'P';
+          } else {
+            self.buttons[r][c].innerHTML = '';
+          }
+        }
+
+        if (revealElement.checked) {
+          showWaiting();
+          let addFlags = [];
+          let removeFlags = [];
+          for (let fr = 0; fr < game.board.height; fr++) {
+            for (let fc = 0; fc < game.board.width; fc++) {
+              if (self.buttons[fr][fc].innerHTML != '' && game.board.rows[fr].cols[fc] === HIDDEN) {
+                addFlags.push({row: fr, col: fc});
+              } else if (self.buttons[fr][fc].innerHTML == '' && game.board.rows[fr].cols[fc] === FLAGGED) {
+                removeFlags.push({row: fr, col: fc});
+              }
+            }
+          }
+          playMoveFunc({
+            gameId: self.gameId,
+            addFlags: addFlags,
+            removeFlags: removeFlags,
+            reveal: {row: r, col: c}
+          }).then(() => {
+            stopShowWaiting();
+            flagElement.checked = true;  // Default click behaviour to flag
+          });  
+        }
+
       });
     }
     this.spans.push(srow);
@@ -356,6 +404,8 @@ var inviteLinkElement = document.getElementById('invite-link');
 var joinGameButtonElement = document.getElementById('join-game');
 var boardElement = document.getElementById('board');
 var playersElement = document.getElementById('players');
+var flagElement = document.getElementById('flag');
+var revealElement = document.getElementById('reveal');
 
 signOutButtonElement.addEventListener('click', signOut);
 signInButtonElement.addEventListener('click', signIn);

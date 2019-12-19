@@ -12,6 +12,10 @@ const MINE = -1;
 const FLAGGED = -2;
 const HIDDEN = -3;
 
+// Score
+const REVEAL_MINE = -10;
+const REVEAL_TILE = 1;
+
 // data = {height: int, width: int, mines: int}
 //
 // prob is the probability any square has a mine
@@ -157,7 +161,10 @@ exports.joinGame = functions.https.onCall((data, context) => {
     });
 });
 
-// data = {gameId: ..., reveal: {row: ..., col: ...}}
+// data = {gameId: ...,
+//         addFlags: [{row: ..., col: ...}, ...],
+//         removeFlags: [{row: ..., col: ...}, ...],
+//         reveal: {row: ..., col: ...}}
 // result = {moves: [{row:, col:}, ...]}
 exports.playMove = functions.https.onCall((data, context) => {
     const uid = context.auth.uid;
@@ -210,8 +217,36 @@ exports.playMove = functions.https.onCall((data, context) => {
             }
 
             let rows = board.rows;
-            if (rows[data.reveal.row].cols[data.reveal.col] !== HIDDEN) {
-                throw new functions.https.HttpsError('invalid-argument', 'Tile (' + data.reveal.row + ', ' + data.reveal.col + ') is not hidden');
+
+            for (let i = 0; i < data.addFlags.length; i++) {
+                let r = data.addFlags[i].row;
+                let c = data.addFlags[i].col;
+                if (rows[r].cols[c] !== HIDDEN) {
+                    throw new functions.https.HttpsError(
+                        'invalid-argument',
+                        'Tile (' + data.reveal.row + ', ' + data.reveal.col + ') is not hidden so cannot add flag'
+                    );
+                }
+                rows[r].cols[c] = FLAGGED;
+            }
+
+            for (let i = 0; i < data.removeFlags.length; i++) {
+                let r = data.removeFlags[i].row;
+                let c = data.removeFlags[i].col;
+                if (rows[r].cols[c] !== FLAGGED) {
+                    throw new functions.https.HttpsError(
+                        'invalid-argument',
+                        'Tile (' + data.reveal.row + ', ' + data.reveal.col + ') is not flagged so cannot remove flag'
+                    );
+                }
+                rows[r].cols[c] = HIDDEN;
+            }
+
+            if (rows[data.reveal.row].cols[data.reveal.col] !== HIDDEN &&
+                rows[data.reveal.row].cols[data.reveal.col] !== FLAGGED) {
+                throw new functions.https.HttpsError(
+                    'invalid-argument',
+                    'Tile (' + data.reveal.row + ', ' + data.reveal.col + ') is not hidden so cannot reveal');
             }
 
             // queue for BFS
@@ -227,7 +262,7 @@ exports.playMove = functions.https.onCall((data, context) => {
                 moves.push(move);
                 rows[move.row].cols[move.col] = hiddenBoard.rows[move.row].cols[move.col];
 
-                score += (hiddenBoard.rows[move.row].cols[move.col] === MINE) ? -10 : 1;
+                score += (hiddenBoard.rows[move.row].cols[move.col] === MINE) ? REVEAL_MINE : REVEAL_TILE;
 
                 if (hiddenBoard.rows[move.row].cols[move.col] !== 0) {
                     continue;
