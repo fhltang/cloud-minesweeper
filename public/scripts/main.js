@@ -160,8 +160,6 @@ function Game(gameId, game, destElement) {
   this.fullUpdate(game);
 }
 
-
-
 function showWaiting() {
   bodyElement.classList.add('waiting');
 }
@@ -205,28 +203,51 @@ function joinGame() {
 
 // onerror can handle initial errors, not transient errors
 function subscribeGame(gameId, callback, onerror) {
-    if (unsubscribe) {
-        unsubscribe();
-        unsubscribe = null;
-    }
-    gameState = null;
-    unsubscribe = firebase.firestore().collection(GAMES).doc(gameId)
-    .onSnapshot((doc) => {
-      if (gameState === null) {
-        console.log('First update', doc.data().board);
-        boardElement.innerHTML = '';
-        gameState = new Game(gameId, doc.data(), boardElement);
-        callback();
-        return;
-      }
-
-      console.log('Subsequent update', doc.data().board);
-      gameState.update(doc.data());
-    }, (error) => {
-      if (gameState === null && onerror) {
-        onerror(error);
-      }
+  if (unsubscribePlayers) {
+    unsubscribePlayers();
+    unsubscribePlayers = null;
+  }
+  unsubscribePlayers = firebase.firestore().collection(GAMES).doc(gameId).collection(PLAYERS).onSnapshot(querySnapshot => {
+    playersElement.innerHTML = '';
+    playersElement.removeAttribute('hidden');
+    playersElement.appendChild(document.createTextNode('Players'));
+    let ul = document.createElement('ul');
+    playersElement.appendChild(ul);
+    querySnapshot.forEach(player => {
+      let li = document.createElement('li');
+      ul.appendChild(li);
+      const template = '<div><img></img></div>';
+      li.innerHTML = template;
+      let div = li.firstChild;
+      div.appendChild(document.createTextNode(player.data().name + ' (' + player.data().email + ')'));
+      div.appendChild(document.createTextNode('score: ' + player.data().score));
+      let img = div.firstChild;
+      img.setAttribute('src', player.data().picture + '?sz=150');
     });
+  });
+
+  if (unsubscribeGame) {
+      unsubscribeGame();
+      unsubscribeGame = null;
+  }
+  gameState = null;
+  unsubscribeGame = firebase.firestore().collection(GAMES).doc(gameId)
+  .onSnapshot((doc) => {
+    if (gameState === null) {
+      console.log('First update', doc.data().board);
+      boardElement.innerHTML = '';
+      gameState = new Game(gameId, doc.data(), boardElement);
+      callback();
+      return;
+    }
+
+    console.log('Subsequent update', doc.data().board);
+    gameState.update(doc.data());
+  }, (error) => {
+    if (gameState === null && onerror) {
+      onerror(error);
+    }
+  });
 }
 
 function initFirebaseAuth() {
@@ -278,12 +299,17 @@ function authStateObserver(user) {
       }, error => {
         // assume it's a permission error
         joinGameButtonElement.removeAttribute('hidden');
-      });      
+      });     
     }
   } else { // User is signed out!
-    if (unsubscribe) {
+    if (unsubscribeGame) {
       boardElement.innerHTML = '';
-      unsubscribe();
+      unsubscribeGame();
+    }
+
+    if (unsubscribePlayers) {
+      playersElement.innerHTML = '';
+      unsubscribePlayers();
     }
 
     // Hide user's profile and sign-out button.
@@ -299,6 +325,9 @@ function authStateObserver(user) {
 
     // Hide join game button
     joinGameButtonElement.setAttribute('hidden', 'true');
+
+    // Hide players
+    playersElement.setAttribute('hidden', 'true');
   }
 }
 
@@ -312,6 +341,7 @@ function addSizeToGoogleProfilePic(url) {
 
 
 const GAMES = 'games';
+const PLAYERS = 'players';
 
 // Shortcuts to DOM Elements.
 var bodyElement = document.getElementsByTagName('body').item(0);
@@ -325,6 +355,7 @@ var inviteElement = document.getElementById('invite');
 var inviteLinkElement = document.getElementById('invite-link');
 var joinGameButtonElement = document.getElementById('join-game');
 var boardElement = document.getElementById('board');
+var playersElement = document.getElementById('players');
 
 signOutButtonElement.addEventListener('click', signOut);
 signInButtonElement.addEventListener('click', signIn);
@@ -349,6 +380,8 @@ firestore.settings(settings);
 
 // Global variables (yuck)
 // Callback to unsubscribe from a game.
-var unsubscribe = null;
+var unsubscribeGame = null;
+// Callback to unsubscribe from players.
+var unsubscribePlayers = null;
 // Game object.
 var gameState = null;
