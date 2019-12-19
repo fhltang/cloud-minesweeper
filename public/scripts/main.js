@@ -53,10 +53,24 @@ function Game(gameId, game, destElement) {
       if (queue.length === 0) {
         return;
       }
-      console.log('animate', queue);
+      console.log('animate', queue, queue.length);
       let move = queue.shift();
       let r = move.row;
       let c = move.col;
+
+      // do BFS of neighbours
+      let deltas = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
+      for (let i = 0; i < deltas.length; i++) {
+          let delta = deltas[i];
+          let cr = r + delta[0];
+          let cc = c + delta[1];
+          if (0 <= cr && cr < self.board.height && 0 <= cc && cc < self.board.width) {
+              if (self.board.rows[cr].cols[cc] === HIDDEN && game.board.rows[cr].cols[cr] !== HIDDEN) {
+                queue.push({row: cr, col: cc});
+              }
+          }
+      }
+
       if (self.board.rows[r].cols[c] === game.board.rows[r].cols[c]) {
          return animate();
       }
@@ -70,19 +84,6 @@ function Game(gameId, game, destElement) {
         self.spans[r][c].innerHTML = 'X';
       } else if (self.board.rows[r].cols[c] > 0) {
         self.spans[r][c].innerHTML = self.board.rows[r].cols[c];
-      }
-
-      // do BFS of neighbours
-      let deltas = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
-      for (let i = 0; i < deltas.length; i++) {
-          let delta = deltas[i];
-          let cr = move.row + delta[0];
-          let cc = move.col + delta[1];
-          if (0 <= cr && cr < self.board.height && 0 <= cc && cc < self.board.width) {
-              if (self.board.rows[cr].cols[cc] === HIDDEN && game.board.rows[cr].cols[cr] !== HIDDEN) {
-                queue.push({row: cr, col: cc});
-              }
-          }
       }
       setTimeout(animate, 50);
     })();
