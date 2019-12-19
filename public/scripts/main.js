@@ -285,6 +285,7 @@ function subscribeGame(gameId, callback, onerror) {
       console.log('First update', doc.data().board);
       boardElement.innerHTML = '';
       gameState = new Game(gameId, doc.data(), boardElement);
+      controlsElement.removeAttribute('hidden');
       callback();
       return;
     }
@@ -360,6 +361,8 @@ function authStateObserver(user) {
       unsubscribePlayers();
     }
 
+    controlsElement.setAttribute('hidden', 'true');
+
     // Hide user's profile and sign-out button.
     userNameElement.setAttribute('hidden', 'true');
     userPicElement.setAttribute('hidden', 'true');
@@ -403,6 +406,7 @@ var inviteElement = document.getElementById('invite');
 var inviteLinkElement = document.getElementById('invite-link');
 var joinGameButtonElement = document.getElementById('join-game');
 var boardElement = document.getElementById('board');
+var controlsElement = document.getElementById('controls');
 var playersElement = document.getElementById('players');
 var flagElement = document.getElementById('flag');
 var revealElement = document.getElementById('reveal');
