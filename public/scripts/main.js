@@ -48,33 +48,57 @@ function Game(gameId, game, destElement) {
       return self.fullUpdate(game);
     }
 
-    let queue = [game.moves[game.moves.length - 1]];
-    (function animate() {
-      if (queue.length === 0) {
+    // Animate updates in a spiral.
+    let moves = [];  // Moves to animate.
+    let maybePush = function(r, c) {
+      if (r < 0 || r >= self.board.height || c < 0 || c >= self.board.width) {
         return;
       }
-      console.log('animate', queue, queue.length);
-      let move = queue.shift();
+      if (self.board.rows[r].cols[c] === HIDDEN && game.board.rows[r].cols[c] !== HIDDEN) {
+        moves.push({row: r, col: c});
+      }
+    }
+
+    let move0 = game.moves[game.moves.length - 1];
+    let r0 = move0.row;
+    let c0 = move0.col;
+    maybePush(r0, c0);
+    for (let radius = 1; radius <= Math.max(r0, (self.board.height - r0), c0, (self.board.width - c0)); radius ++) {
+      // Top
+      for (let c = c0 - radius + 1; c <= c0 + radius; c++) {
+        let r = r0 - radius;
+        maybePush(r, c);
+      }
+
+      // Right
+      for (let r = r0 - radius + 1; r <= r0 + radius; r++) {
+        let c = c0 + radius;
+        maybePush(r, c);
+      }
+
+      // Bottom
+      for (let c = c0 + radius - 1; c >= c0 - radius; c--) {
+        let r = r0 + radius;
+        maybePush(r, c);
+      }
+
+      // Right
+      for (let r = r0 + radius - 1; r >= r0 - radius; r--) {
+        let c = c0 - radius;
+        maybePush(r, c);
+      }
+
+    }
+
+    (function animate() {
+      if (moves.length === 0) {
+        return;
+      }
+
+      let move = moves.shift();
       let r = move.row;
       let c = move.col;
 
-      // do BFS of neighbours
-      let deltas = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
-      for (let i = 0; i < deltas.length; i++) {
-          let delta = deltas[i];
-          let cr = r + delta[0];
-          let cc = c + delta[1];
-          if (0 <= cr && cr < self.board.height && 0 <= cc && cc < self.board.width) {
-              if (self.board.rows[cr].cols[cc] === HIDDEN && game.board.rows[cr].cols[cr] !== HIDDEN) {
-                queue.push({row: cr, col: cc});
-              }
-          }
-      }
-
-      if (self.board.rows[r].cols[c] === game.board.rows[r].cols[c]) {
-         return animate();
-      }
-         
       // Update state
       self.board.rows[r].cols[c] = game.board.rows[r].cols[c];
       // Update DOM elements.
@@ -189,12 +213,14 @@ function subscribeGame(gameId, callback, onerror) {
     unsubscribe = firebase.firestore().collection(GAMES).doc(gameId)
     .onSnapshot((doc) => {
       if (gameState === null) {
+        console.log('First update', doc.data().board);
         boardElement.innerHTML = '';
         gameState = new Game(gameId, doc.data(), boardElement);
         callback();
         return;
       }
 
+      console.log('Subsequent update', doc.data().board);
       gameState.update(doc.data());
     }, (error) => {
       if (gameState === null && onerror) {
